@@ -8,156 +8,131 @@
 class AccelerometerInterface
 {
  public:
-    virtual bool Init() = 0;
-    virtual int16_t GetX() = 0;
-    virtual int16_t GetY() = 0;
-    virtual int16_t GetZ() = 0;
-    virtual float GetPitch() = 0;
-    virtual float GetRoll() = 0;
-    virtual uint8_t GetFullScaleRange() = 0;
-    virtual void SetFullScaleRange(uint8_t range_value) = 0;
+  virtual bool Init()                                 = 0;
+  virtual int16_t GetX()                              = 0;
+  virtual int16_t GetY()                              = 0;
+  virtual int16_t GetZ()                              = 0;
+  virtual float GetPitch()                            = 0;
+  virtual float GetRoll()                             = 0;
+  virtual int GetFullScaleRange()                     = 0;
+  virtual void SetFullScaleRange(uint8_t range_value) = 0;
 };
 
 class Accelerometer : public AccelerometerInterface
 {
  public:
-    uint16_t const kDataOffset = 16;
-    uint8_t const kAccelerometerAddress = 0x1c;
-    float const kRadiansToDegree = 180/3.14;
-    uint8_t const kWhoAmIExpectedValue = 0x2a;
-    uint8_t const kMsbShift = 8;
-    size_t const kEightBitLength = 1;
-    size_t const kSixteenBitLength = 2;
+  uint16_t const kDataOffset         = 16;
+  float const kRadiansToDegree       = 180 / 3.14f;
+  uint8_t const kWhoAmIExpectedValue = 0x2a;
+  uint8_t const kMsbShift            = 8;
+  size_t const kEightBitLength       = 1;
+  size_t const kSixteenBitLength     = 2;
 
-    I2c AccelerometerDevice;
-    Status status;
+  int gValue[4]         = { 2, 4, 8, -1 };
+  uint8_t sendValue[16] = { 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+                            0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
-    enum class RegisterMap_t : uint8_t
-      {
-        status = 0x00,
-        x = 0x01,
-        y = 0x03,
-        z = 0x05,
-        who_am_i = 0x0d,
-        data_config = 0x0e
-      };
+  enum RegisterMap : uint8_t
+  {
+    status      = 0x00,
+    x           = 0x01,
+    y           = 0x03,
+    z           = 0x05,
+    who_am_i    = 0x0d,
+    data_config = 0x0e
+  };
 
-    Accelerometer()
-    {
-    }
-    bool Init() override
-    {
-        AccelerometerDevice.Initialize();
-        AccelerometerDevice.Write(kAccelerometerAddress, { 0x2A, 0x01 });
-        uint8_t WhoAmIReceivedValue;
-        RegisterMap_t IdentityRegister = RegisterMap_t::who_am_i;
-        uint8_t WhoAmIRegister;
-        WhoAmIRegister = static_cast <unsigned char> (IdentityRegister);
-        status = AccelerometerDevice.WriteThenRead(kAccelerometerAddress, &WhoAmIRegister,
-                                     kEightBitLength, &WhoAmIReceivedValue,
-                                     kEightBitLength);
-        return WhoAmIReceivedValue == kWhoAmIExpectedValue;
-    }
-    int16_t GetX() override
-    {
-        uint8_t kXVal[2];
-        RegisterMap_t XReg = RegisterMap_t::x;
-        uint8_t kXReg = 0x01;
-        kXReg = static_cast <unsigned char> (XReg);
-        status = AccelerometerDevice.WriteThenRead(0x1c, &kXReg,
-                                   kEightBitLength, kXVal,
-                                   kSixteenBitLength);
-        return (int16_t)((kXVal[0] << kMsbShift) |
-                 kXVal[1])/kDataOffset;  // Data arrives MSB then LSB
-    }
-    int16_t GetY() override
-    {
-        uint8_t kYVal[2];
-        RegisterMap_t YReg = RegisterMap_t::y;
-        uint8_t kYReg = 0x03;
-        kYReg = static_cast <unsigned char> (YReg);
-        status = AccelerometerDevice.WriteThenRead(0x1c, &kYReg,
-                                   kEightBitLength, kYVal,
-                                   1);
-        return (int16_t)((kYVal[0] << kMsbShift) |
-                 kYVal[1])/kDataOffset;  // Data arrives MSB then LSB
-    }
-    int16_t GetZ() override
-    {
-        uint8_t kZVal[2];
-        RegisterMap_t ZReg = RegisterMap_t::z;
-        uint8_t kZReg = 0x05;
-        kZReg = static_cast <unsigned char> (ZReg);
-        status = AccelerometerDevice.WriteThenRead(0x1c, &kZReg,
-                                   kEightBitLength, kZVal,
-                                   1);
-        return (int16_t)((kZVal[0] << kMsbShift) |
-                 kZVal[1])/kDataOffset;  // Data arrives MSB then LSB
-    }
-    float GetPitch() override
-    {
-        int x = GetX();
-        int y = GetY();
-        int z = GetZ();
-        float kPitchNumerator = x * -1;
-        float kPitchDenominator = sqrt((y * y) + (z * z));
-        float pitch = atan2(kPitchNumerator, kPitchDenominator) * kRadiansToDegree;
-        return pitch;
-    }
-    float GetRoll() override
-    {
-        int y = GetY();
-        int z = GetZ();
-        return (atan2(y, z) * kRadiansToDegree);
-    }
-    uint8_t GetFullScaleRange() override
-    {
-        uint8_t fullScaleRangeValue;
-        RegisterMap_t dataConfig = RegisterMap_t::data_config;
-        uint8_t configReg;
-        configReg = (unsigned char) dataConfig;
-        uint8_t FullScaleValue;
-        status = AccelerometerDevice.WriteThenRead(kAccelerometerAddress, &configReg,
-                                     kEightBitLength, &FullScaleValue,
-                                     kEightBitLength);
-        FullScaleValue &= 0x01;
-        switch (FullScaleValue)
-        {
-            case 0: FullScaleValue = 2;
-            case 1: FullScaleValue = 4;
-            case 2: FullScaleValue = 8;
-        }
-        return FullScaleValue;
-    }
-    void SetFullScaleRange(uint8_t range_value) override
-    {
-        printf("range_value is %x\n", range_value);
-        RegisterMap_t dataConfig = RegisterMap_t::data_config;
-        uint8_t configReg;
-        configReg = static_cast <unsigned char> (dataConfig);
-        uint8_t sendRange;
-        if (range_value == 2)
-        {
-            sendRange = 0;
-        }
-        else if (range_value == 4)
-        {
-            sendRange = 1;
-        }
-        else if (range_value == 8)
-        {
-            sendRange = 2;
-        }
-        else
-        {
-            sendRange = 0;
-        }
-        printf("send range is %x\n", sendRange);
-        uint8_t fullScaleRangeWriteBuffer [2] = {configReg, sendRange};
-        status = AccelerometerDevice.Write(kAccelerometerAddress, fullScaleRangeWriteBuffer,
-                             kSixteenBitLength);
-    }
-    virtual ~Accelerometer()
-    {
-    }
+  explicit constexpr Accelerometer(uint8_t address = 0x1c)
+      : i2c_(&accelerometer_device_),
+        accelerometer_device_(),
+        accelerometer_address_(address)
+  {
+  }
+  bool Init() override
+  {
+    i2c_->Initialize();
+    i2c_->Write(accelerometer_address_, { 0x2A, 0x01 });
+    uint8_t WhoAmIReceivedValue;
+    uint8_t IdentityRegister = RegisterMap::who_am_i;
+    i2c_->WriteThenRead(accelerometer_address_, &IdentityRegister,
+                        kEightBitLength, &WhoAmIReceivedValue, kEightBitLength);
+    return (WhoAmIReceivedValue == kWhoAmIExpectedValue);
+  }
+  int16_t GetX() override
+  {
+    int tiltreadings;
+    int16_t xtilt;
+    uint8_t kXVal[2];
+    uint8_t XReg = RegisterMap::x;
+    i2c_->WriteThenRead(accelerometer_address_, &XReg, kEightBitLength, kXVal,
+                        kSixteenBitLength);
+    tiltreadings = (kXVal[0] << kMsbShift) | kXVal[1];
+    xtilt        = static_cast<int16_t>(tiltreadings);
+    return xtilt;
+  }
+  int16_t GetY() override
+  {
+    int tiltreadings;
+    int16_t ytilt;
+    uint8_t kYVal[2];
+    uint8_t YReg = RegisterMap::y;
+    i2c_->WriteThenRead(accelerometer_address_, &YReg, kEightBitLength, kYVal,
+                        2);
+    tiltreadings = (kYVal[0] << kMsbShift) | kYVal[1];
+    ytilt        = static_cast<int16_t>(tiltreadings);
+    return ytilt;
+  }
+  int16_t GetZ() override
+  {
+    int tiltreadings;
+    int16_t ztilt;
+    uint8_t kZVal[2];
+    uint8_t ZReg = RegisterMap::z;
+    i2c_->WriteThenRead(accelerometer_address_, &ZReg, kEightBitLength, kZVal,
+                        2);
+    tiltreadings = (kZVal[0] << kMsbShift) | kZVal[1];
+    ztilt        = static_cast<int16_t>(tiltreadings);
+    return ztilt;
+  }
+  float GetPitch() override
+  {
+    int x                   = GetX();
+    int y                   = GetY();
+    int z                   = GetZ();
+    float kPitchNumerator   = x * -1;
+    float kPitchDenominator = sqrtf((y * y) + (z * z));
+    float pitch = atan2f(kPitchNumerator, kPitchDenominator) * kRadiansToDegree;
+    return pitch;
+  }
+  float GetRoll() override
+  {
+    int y = GetY();
+    int z = GetZ();
+    return (atan2f(y, z) * kRadiansToDegree);
+  }
+  int GetFullScaleRange() override
+  {
+    uint8_t configReg = RegisterMap::data_config;
+    uint8_t FullScaleValue;
+    i2c_->WriteThenRead(accelerometer_address_, &configReg, kEightBitLength,
+                        &FullScaleValue, kEightBitLength);
+    FullScaleValue &= 0x03;
+    int range = gValue[FullScaleValue];
+    return range;
+  }
+  void SetFullScaleRange(uint8_t range_value) override
+  {
+    range_value &= 0x0f;
+    uint8_t configReg                    = RegisterMap::data_config;
+    uint8_t sendRange                    = sendValue[range_value];
+    uint8_t fullScaleRangeWriteBuffer[2] = { configReg, sendRange };
+    i2c_->Write(accelerometer_address_, fullScaleRangeWriteBuffer,
+                kSixteenBitLength);
+  }
+  virtual ~Accelerometer() {}
+
+ private:
+  I2cInterface * i2c_;
+  I2c accelerometer_device_;
+  uint8_t accelerometer_address_;
 };
